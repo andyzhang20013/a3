@@ -1,0 +1,669 @@
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Visualization</title>
+    <script src="https://d3js.org/d3.v6.min.js"></script>
+</head>
+<body>
+<div class="scroll-container">
+<div id="instructions">
+    <h2>NBA All-Star Comparison</h2>
+    <p>Select different options from the dropdown menus to change the axes of the scatterplot and use the checkboxes to filter the All-Stars by the year they were selected</p>
+    <p>Click on two players' images to see a detailed comparison in the head-to-head section.</p>
+    <div id = "dropdown">
+        <div> 
+            <label for="y-axis">Y-Axis:</label>
+            <select id="y-axis" onchange="updateScatterplot()">
+                <option value="FG_PCT">Field Goal %</option>
+                <option value="FG3_PCT">3-PT Field Goal %</option>
+                <option value="REB">Total Rebounds</option>
+                <option value="AST">Total Assists</option>
+                <option value="PTS">Total Points</option>
+                <option value="STL">Total Steals</option>
+                <option value="BLK">Total Blocks</option>
+                <option value="TOV">Total Turnovers</option>
+            </select>
+            <label for="x-axis">X-Axis:</label>
+            <select id="x-axis" onchange="updateScatterplot()">
+                <option value="FGA">Field Goals Attempted</option>
+                <option value="FG3A">3-PT Field Goals Attempted</option>
+                <option value="REB_PG">Rebounds per Game</option>
+                <option value="AST_PG">Assists per Game</option>
+                <option value="PTS_PG">Points per Game</option>
+                <option value="STL_PG">Steals per Game</option>
+                <option value="BLK_PG">Blocks per Game</option>
+                <option value="TOV_PG">Turnovers per Game</option>
+            </select>
+          </div>
+    </div>
+    <div id="checklist"></div>
+
+    
+</div>
+<div id="scatterplot"></div>
+<div id="head2head"></div>
+
+
+<style>
+
+
+    #instructions {
+    font-family: Arial, sans-serif;
+    color: #480202;
+    padding: 10px;
+    margin: 10px;
+    border-radius: 5px;
+    background-color: #f9a2a2;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    @media (max-width: 600px) {
+        #instructions {
+            font-size: smaller;
+            margin: 5px;
+            padding: 5px;
+        }
+    }   
+
+    
+    /* Define CSS styles for layout */
+    #scatterplot {
+        float: left;
+        width: 66%;
+        box-sizing: border-box;
+        background-color: aquamarine;
+        overflow: auto;
+        overflow-y: auto;
+
+    }
+
+    #head2head {
+        float: right;
+        width: 34%;
+        box-sizing: border-box;
+
+    }
+
+
+    .clear {
+        clear: both;
+    }
+
+    #dropdown {
+        clear: both;
+        display: flex;
+        flex-wrap: wrap; /* Allows items to wrap onto the next line */
+        align-items: center; /* Aligns items vertically */
+        justify-content: start;
+        background-color: #f9a2a2; /* Aligns items to the start of the container */
+ 
+        
+        
+    }
+
+    #checklist {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: start;
+        background-color: #f9a2a2;
+
+    }
+
+    
+    /* Add CSS for smaller comparison images */
+    .comparison-image img {
+        width: 100px;
+        height: 50;
+        margin-right: 10px; /* Provide some space between images */
+        display: block; /* Ensures each image starts on a new line */
+    }
+    .green-box, .blue-box {
+        width: 100px; /* Adjust the width to match the image */
+        height: 20px; /* Set the height of the colored boxes */
+        margin-top: 5px; /* Adjust the margin to separate the boxes from images */
+    }
+
+    .green-box {
+        background-color: green;
+    }
+
+    .blue-box {
+        background-color: blue;
+    }
+    
+    .player-container {
+    text-align: center; /* Centers the content */
+    margin: 0 auto; /* Centers the container itself if it has a specified width */
+}
+
+.checklist-title {
+    margin-right: 5px; /* Adjust the value to create more or less space */
+}
+
+.comparison-image {
+    display: inline-block; /* Places images side by side */
+    margin-right: 20px; 
+    vertical-align: top; 
+}
+
+.comparison-image:last-child {
+    margin-right: 0; /* Removes margin for the last image to avoid extra spacing */
+}
+
+.comparison-image img {
+    width: 100px; /* Adjust the width as needed */
+    height: 100;
+}
+
+/* Adjustments for the name label and the stat box */
+.player-name, .stat-box {
+    width: 100px; 
+    text-align: center; /* Center the text */
+    margin-top: 5px; /* Space between the image and the text */
+}
+
+.blue-box, .green-box {
+    height: 20px; /* Set the height of the colored boxes */
+    margin-bottom: 10px; /* Space below the box */
+}
+
+/* CSS for axis labels */
+.x.label, .y.label {
+    fill: #333; /* Text color */
+    font-family: Arial, sans-serif;
+    font-weight: bold; /* Font weight */
+    font-size: 14px; /* Larger font size for axis labels */
+}
+
+/* CSS for chart title */
+.chart.title {
+    fill: #333; /* Text color */
+    font-family: Arial, sans-serif; 
+    font-weight: bold; /* Font weight */
+    font-size: 20px; /* Larger font size for chart title */
+}
+
+/* CSS for bar labels */
+.bar-label {
+    fill: #333; /* Text color */
+    font-family: Arial, sans-serif; 
+    font-size: 12px;
+}
+</style>
+
+<script>
+    // Track selected images and their names
+        var selectedImages = [];
+        var selectedPlayers = [];
+        var svgHeadToHead = null;
+    // Read the CSV file and create dictionaries
+    d3.csv("333Filtered.csv").then(function(data) {
+        // Dictionary to hold aggregated statistics for each player
+        var playerStats = {};
+
+        // Dictionary to hold matchups for each player
+        var playerMatchups = {};
+        
+        
+
+        // Process the CSV data
+        data.forEach(function(d) {
+            var playerName = d.PLAYER_NAME;
+            var gameID = d.Game_ID;
+
+            // Aggregate statistics for each player
+            if (!playerStats[playerName]) {
+                playerStats[playerName] = {
+                    FGA: 0,
+                    FGM: 0,
+                    FG3A: 0,
+                    FG3M: 0,
+                    FTM: 0,
+                    FTA: 0,
+                    REB: 0,
+                    AST: 0,
+                    TOV: 0,
+                    PTS: 0,
+                    STL: 0,
+                    BLK: 0,
+                    GamesPlayed: 0,
+                    FG_PCT: 0,
+                    FG3_PCT: 0,
+                    REB_PG: 0,
+                    AST_PG: 0,
+                    PTS_PG: 0,
+                    TOV_PG: 0,
+                    STL_PG: 0,
+                    BLK_PG: 0,
+                    Image: "file.csv"
+                };
+            }
+
+            playerStats[playerName].FGA += +d.FGA;
+            playerStats[playerName].FGM += +d.FGM;
+            playerStats[playerName].FG3A += +d.FG3A;
+            playerStats[playerName].FG3M += +d.FG3M;
+            playerStats[playerName].FTM += +d.FTM;
+            playerStats[playerName].FTA += +d.FTA;
+            playerStats[playerName].REB += +d.REB;
+            playerStats[playerName].AST += +d.AST;
+            playerStats[playerName].TOV += +d.TOV;
+            playerStats[playerName].PTS += +d.PTS;
+            playerStats[playerName].STL += +d.STL;
+            playerStats[playerName].BLK += +d.BLK;
+            playerStats[playerName].GamesPlayed += 1;
+
+            // Populate the dictionary of matchups
+            if (!playerMatchups[playerName]) {
+                playerMatchups[playerName] = {};
+            }
+
+            // Find matchups by checking Game_ID overlap
+            var matchups = data.filter(function(entry) {
+                return entry.PLAYER_NAME !== playerName && entry.Game_ID === gameID;
+            });
+
+            matchups.forEach(function(matchup) {
+                var opponentName = matchup.PLAYER_NAME;
+
+                if (!playerMatchups[playerName][opponentName]) {
+                    playerMatchups[playerName][opponentName] = [];
+                }
+
+                playerMatchups[playerName][opponentName].push(gameID);
+            });
+        });
+
+        // Function to calculate percentages
+        function calculatePercentages(playerStats) {
+            for (var playerName in playerStats) {
+                var player = playerStats[playerName];
+
+                // Calculate FG_PCT and FG3_PCT
+                player.FG_PCT = player.FGA !== 0 ? player.FGM / player.FGA : 0;
+                player.FG3_PCT = player.FG3A !== 0 ? player.FG3M / player.FG3A : 0;
+
+                // Calculate REB_PG, AST_PG, PTS_PG, TOV_PG
+                player.REB_PG = player.GamesPlayed !== 0 ? player.REB / player.GamesPlayed : 0;
+                player.AST_PG = player.GamesPlayed !== 0 ? player.AST / player.GamesPlayed : 0;
+                player.PTS_PG = player.GamesPlayed !== 0 ? player.PTS / player.GamesPlayed : 0;
+                player.TOV_PG = player.GamesPlayed !== 0 ? player.TOV / player.GamesPlayed : 0;
+                player.STL_PG = player.GamesPlayed !== 0 ? player.STL / player.GamesPlayed : 0;
+                player.BLK_PG = player.GamesPlayed !== 0 ? player.BLK / player.GamesPlayed : 0;
+            }
+        }
+
+        function calculateImages(playerStats) {
+            for (var playerName in playerStats) {
+                var player = playerStats[playerName];
+                player.Image = playerName + ".jpg"
+        }}
+        
+        AS18 = [
+                "LeBron James", "Giannis Antetokounmpo", "Stephen Curry", "Kevin Durant",
+                "Paul George", "James Harden", "Kyrie Irving", "Kawhi Leonard",
+                "Damian Lillard", "Kemba Walker", "Khris Middleton", "Ben Simmons",
+                "LaMarcus Aldridge", "Karl-Anthony Towns", "Bradley Beal", "Anthony Davis", "Nikola Jokic", "Russell Westbrook",
+                "Blake Griffin", "D'Angelo Russell", "Nikola Vucevic", "Kemba Walker"
+                ]
+        AS19 = [
+            "LeBron James", "Giannis Antetokounmpo", "Anthony Davis", "Kawhi Leonard",
+            "Luka Doncic", "James Harden", "Damian Lillard", "Ben Simmons",
+            "Jayson Tatum", "Chris Paul", "Nikola Jokic", "Domantas Sabonis",
+            "Russell Westbrook", "Jaylen Brown", "Pascal Siakam", "Jimmy Butler",
+            "Khris Middleton", "Bam Adebayo", "Rudy Gobert", "Brandon Ingram",
+            "Russell Westbrook", "Chris Paul"
+                ]
+        AS20 = [
+                "LeBron James", "Kevin Durant", "Giannis Antetokounmpo", "Kawhi Leonard",
+                "Stephen Curry", "Luka Doncic", "Joel Embiid", "Nikola Jokic",
+                "Damian Lillard", "Ben Simmons", "Chris Paul", "Jaylen Brown",
+                "Jayson Tatum", "James Harden", "Devin Booker", "Zion Williamson",
+                "Zach LaVine", "Julius Randle", "Nikola Vucevic", "Donovan Mitchell",
+                "Rudy Gobert", "Chris Paul", "Mike Conley", "Paul George"
+                ]
+         AS21 = [
+                "Kevin Durant", "Giannis Antetokounmpo", "Joel Embiid", "DeMar DeRozan",
+                "Trae Young", "Devin Booker", "Zach LaVine", "Jimmy Butler",
+                "Khris Middleton", "James Harden", "Chris Paul", "Damian Lillard",
+                "LeBron James", "Stephen Curry", "Ja Morant", "Donovan Mitchell",
+                "Rudy Gobert", "Luka Doncic", "Paul George", "Anthony Davis",
+                "DeMar DeRozan", "Trae Young", "Devin Booker", "Ja Morant"
+                ]
+
+        AS = [...new Set([...AS18, ...AS19, ...AS20, ...AS21])];
+        Labels = {  FG_PCT: "Field Goal Percentage",
+                    FG3_PCT: "3PT Field Goal Percentage",
+                    FGA: "Field Goals Attempted",
+                    FG3A: "3PT Field Goals Attempted",
+                    AST: "Total Assists",
+                    REB: "Total Rebounds",
+                    PTS: "Total Points",
+                    STL: "Total Steals",
+                    BLK: "Total Blocks",
+                    PTS_PG: "Points Per Game",
+                    AST_PG: "Assists Per Game",
+                    TOV_PG: "Turnovers Per Game",
+                    TOV: "Total Turnovers",
+                    BLK_PG: "Blocks Per Game",
+                    STL_PG: "Steals Per Game:"
+                }
+  
+
+        // Call the function to calculate percentages
+        calculatePercentages(playerStats);
+        calculateImages(playerStats);
+        console.log(playerStats)
+        console.log(playerMatchups)
+        function createScatterplot(xAxis, yAxis, checked) {
+            // Set up dimensions for the scatterplot
+            var margin = { top: 40, right: 20, bottom: 100, left: 70 };
+            var width = 1200 - margin.left - margin.right;
+            var height = 600 - margin.top - margin.bottom;
+
+            var ImageLength = 75
+            var ImageHeight = 50
+            
+            var keysToKeep = [];
+            if (checked.includes("2018")) {
+                keysToKeep = [...keysToKeep, ...AS18]
+            }
+            if (checked.includes("2019")) {
+                keysToKeep = [...keysToKeep, ...AS19]
+            }
+            if (checked.includes("2020")) {
+                keysToKeep = [...keysToKeep, ...AS20]
+            }
+            if (checked.includes("2021")) {
+                keysToKeep = [...keysToKeep, ...AS21]
+            }
+            console.log(keysToKeep)
+            
+
+            const filteredDictionary = Object.keys(playerStats)
+                .filter(key => keysToKeep.includes(key))
+                .reduce((obj, key) => {
+                    obj[key] = playerStats[key];
+                    return obj;
+                }, {});
+            
+            console.log(filteredDictionary)
+
+            // Remove the previous scatterplot
+            d3.select("#scatterplot").selectAll("*").remove();
+            // Create SVG container
+            var svg = d3.select("#scatterplot")
+                    .append("svg")
+                    .attr("width", width + margin.left + margin.right)
+                    .attr("height", height + margin.top + margin.bottom)
+                    .append("g")
+                    .attr("transform", "translate(" + (margin.left+20) + "," + (margin.top+50) + ")");
+
+            svgHeadToHead = d3.select("#head2head")
+                .append("svg")
+                .attr("width",  500 - margin.left - margin.right)
+                .attr("height", 800 - margin.top - margin.bottom);
+            // Create scales for x and y axes
+            var xScale = d3.scaleLinear().range([0, width]);
+            var yScale = d3.scaleLinear().range([height, 0]);
+
+            xScale.domain(d3.extent(Object.values(playerStats), function(d) { return +d[xAxis]; }));
+            yScale.domain(d3.extent(Object.values(playerStats), function(d) { return +d[yAxis]; }));
+
+            // Create x-axis
+            svg.append("g")
+                .attr("transform", "translate(0," + height + ")")
+                .call(d3.axisBottom(xScale))
+                .append("text")
+                .attr("x", width / 2)
+                .attr("y", margin.bottom - 10)
+                .attr("text-anchor", "middle")
+                .text(xAxis);
+
+            // Create y-axis
+            svg.append("g")
+                .call(d3.axisLeft(yScale))
+                .append("text")
+                .attr("transform", "rotate(-90)")
+                .attr("y", -margin.left)
+                .attr("x", -height / 2)
+                .attr("dy", "1em")
+                .attr("text-anchor", "middle")
+                .text(yAxis);
+                
+            // Add X Axis Label
+            svg.append("text")
+                .attr("class", "x label")
+                .attr("text-anchor", "end")
+                .attr("x", width)
+                .attr("y", height + 40)
+                .style("font-size", "20px")
+                .text(Labels[xAxis]); // Replace with your actual label text
+
+            // Add Y Axis Label
+            svg.append("text")
+                .attr("class", "y label")
+                .attr("text-anchor", "end")
+                .attr("y", -70)
+                .attr("dy", ".75em")
+                .attr("transform", "rotate(-90)")
+                .style("font-size", "20px")
+                .text(Labels[yAxis]); // Replace with your actual label text
+
+            // Add Chart Title
+            svg.append("text")
+                .attr("class", "chart title")
+                .attr("x", width / 2)
+                .attr("y", 20 - (margin.top + 30))
+                .attr("text-anchor", "middle")
+                .style("font-size", "24px")
+                .text(Labels[yAxis] + " Versus " + Labels[xAxis]); // Replace with your actual chart title
+            // Create circles for each data point
+
+
+            svg.selectAll("image")
+                .data(Object.keys(filteredDictionary))
+                .enter().append("image")
+                .attr("x", function(playerName) { return xScale(+playerStats[playerName][xAxis]) - ImageLength / 2; })
+                .attr("y", function(playerName) { return yScale(+playerStats[playerName][yAxis]) - ImageHeight / 2; })
+                .attr("width", ImageLength)
+                .attr("height", ImageHeight)
+                .attr("xlink:href", function(playerKey) {return playerStats[playerKey].Image;  })
+                .on("click", function(event, playerKey) {
+                    
+                    var playerName = playerKey; // Assuming playerKey is the player's name
+
+                   
+                    // Check if less than two images are selected or if the clicked image is already selected
+                    if (selectedImages.length < 2 || selectedImages.includes(this)) {
+                        // Toggle selection status
+                        if (!selectedImages.includes(this)) {
+                            selectedImages.push(this);
+                            selectedPlayers.push(playerName);
+
+                            // Change the appearance of the selected image if needed
+                            d3.select(this).style("opacity", 0.5); // For example, reduce opacity
+                        } else {
+                            // Deselect if already selected
+                            var index = selectedImages.indexOf(this);
+                            if (index !== -1) {
+                                selectedImages.splice(index, 1);
+                                selectedPlayers.splice(index, 1);
+
+                                // Restore the appearance of the deselected image if needed
+                                d3.select(this).style("opacity", 1); // For example, restore opacity
+                            }
+                        }
+                    }
+
+                    handlePlayerSelectionChange(selectedPlayers);
+                         
+});
+        }
+
+        function updateHeadToHead(selectedPlayers) {
+            // Clear existing content
+            d3.select("#head2head").selectAll("*").remove();
+            var playersContainer = d3.select("#head2head").append("div")
+                .attr("class", "player-container");
+
+            selectedPlayers.forEach(function(player, index) {
+                var playerData = playerStats[player];
+                var playerDiv = playersContainer.append("div")
+                    .attr("class", "comparison-image");
+
+                playerDiv.append("img")
+                    .attr("src", playerData.Image)
+                    .attr("alt", player);
+                    
+
+                playerDiv.append("div")
+                    .attr("class", index === 0 ? "blue-box" : "green-box");
+
+                playerDiv.append("div")
+                    .attr("class", "player-name")
+                    .text(player);
+            });
+            svgHeadToHead.selectAll("*").remove();
+            var headToHeadWidth = 600;
+            var headToHeadHeight = 400;
+            
+            // Check if two players are selected
+            if (selectedPlayers.length === 2) {
+                // Get information for the selected players from playerStats
+                var player1Data = playerStats[selectedPlayers[0]];
+                var player2Data = playerStats[selectedPlayers[1]];
+
+                // Extract relevant fields for comparison
+                var fieldsToCompare = ['PTS_PG', 'REB_PG', 'AST_PG', 'STL_PG', 'BLK_PG', 'TOV_PG']; // Add more fields as needed
+
+                // Data array for the bar chart
+                var dataToCompare = fieldsToCompare.map(function(field) {
+                    return {
+                        field: field,
+                        player1Value: +player1Data[field],
+                        player2Value: +player2Data[field]
+                    };
+                });
+
+                // Set up dimensions for the bar chart
+                var margin = { top: 20, right: 20, bottom: 30, left: 60 };
+                var width = headToHeadWidth - margin.left - margin.right;
+                var height = headToHeadHeight - margin.top - margin.bottom;
+
+                // Create SVG container for the bar chart
+                var svg = d3.select("#head2head")
+                    .append("svg")
+                    .attr("width", width + margin.left + margin.right)
+                    .attr("height", height + margin.top + margin.bottom)
+                    .attr("transform", "translate(" + 0 + "," + 20 + ")")
+                    .append("g")
+                    .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+                // Set up scales and axes
+                var xScale = d3.scaleBand()
+                    .domain(fieldsToCompare)
+                    .range([0, width])
+                    .padding(0.5);
+
+                var yScale = d3.scaleLinear()
+                    .domain([0, d3.max(dataToCompare, function(d) { return Math.max(d.player1Value, d.player2Value); })])
+                    .range([height, 0]);
+
+                // Create bars for player 1
+                svg.selectAll(".barPlayer1")
+                    .data(dataToCompare)
+                    .enter().append("rect")
+                    .attr("class", "barPlayer1")
+                    .attr("x", function(d) { return xScale(d.field); })
+                    .attr("width", xScale.bandwidth() / 2)
+                    .attr("y", function(d) { return yScale(d.player1Value); })
+                    .attr("height", function(d) { return height - yScale(d.player1Value); })
+                    .attr("fill", "blue");
+
+                // Create bars for player 2
+                svg.selectAll(".barPlayer2")
+                    .data(dataToCompare)
+                    .enter().append("rect")
+                    .attr("class", "barPlayer2")
+                    .attr("x", function(d) { return xScale(d.field) + xScale.bandwidth() / 2; })
+                    .attr("width", xScale.bandwidth() / 2)
+                    .attr("y", function(d) { return yScale(d.player2Value); })
+                    .attr("height", function(d) { return height - yScale(d.player2Value); })
+                    .attr("fill", "green");
+
+                // Add x-axis
+                svg.append("g")
+                    .attr("transform", "translate(0," + height + ")")
+                    .call(d3.axisBottom(xScale));
+
+                // Add y-axis
+                svg.append("g")
+                    .call(d3.axisLeft(yScale));
+                // Add text labels for player names
+                
+                // Add y-axis label
+                svg.append("text")
+                    .attr("transform", "rotate(-90)")
+                    .attr("y", 0 - margin.left)
+                    .attr("x", 0 - (height / 2))
+                    .attr("dy", "1em")
+                    .style("text-anchor", "middle")
+                    .text("Number Occurences");                             
+
+            } 
+        }
+
+        function handlePlayerSelectionChange(selectedPlayers) {
+            // Clear the contents of the #head2head div
+            d3.select("#head2head").selectAll("*").remove();
+            console.log(selectedPlayers)
+            updateHeadToHead(selectedPlayers);
+        }
+        
+        window.updateScatterplot = function() {
+            var xValue = document.getElementById("x-axis").value;
+            var yValue = document.getElementById("y-axis").value;
+            var checked = checklist.filter(function() { return this.checked; }).data();
+            console.log(checked)
+            selectedImages = [];
+            selectedPlayers = [];
+            // Clear the contents of the #head2head div
+            d3.select("#head2head").selectAll("*").remove();
+            // Update the scatterplot with new axes
+            createScatterplot(xValue, yValue, checked);
+        }
+
+        var options = ["2018", "2019", "2020", "2021"]
+        var checklistContainer = d3.select("#checklist")
+        checklistContainer.append("p")
+                        .attr("class", "checklist-title")
+                        .text("All-Stars From Years:")
+
+        var checklist = d3.select("#checklist").selectAll("input")
+            .data(options)
+            .enter()
+            .append("label")
+            .text(function(d) { return d; })
+            .append("input")
+            .attr("type", "checkbox")
+            .attr("value", function(d) { return d; })
+            .on("change", updateScatterplot);
+
+        
+
+        // Create the initial scatterplots
+        createScatterplot("FGA", "FG_PCT", ["2018", "2019", "2020", "2021"]);
+
+        // Function to update the scatterplot based on user choices
+       
+    });
+</script>
+
+
+</div>
+
+</body>
+</html>
