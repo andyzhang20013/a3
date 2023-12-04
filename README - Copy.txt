@@ -1,0 +1,1 @@
+To run, open CS333 Final in VSCode. Run the code using Live Server. 
